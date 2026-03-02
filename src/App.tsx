@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   Users, Plus, LogIn, Play, Pause, RotateCcw, X, 
   Mic2, LogOut, Moon, Sun, Check, ChevronRight, Stethoscope, ShieldAlert, Hand
@@ -38,7 +38,7 @@ export default function App() {
     
     newSocket.on("room:created", (data) => { 
       setIsCreator(true); 
-      setFormData(prev => ({ ...prev, joinPassword: formData.adminPassword })); // Prepara para entrar
+      setFormData(prev => ({ ...prev, joinPassword: formData.adminPassword })); 
       socket?.emit("room:join", { roomNumber: data.roomNumber, name: "Admin", password: formData.adminPassword });
     });
 
@@ -176,7 +176,7 @@ export default function App() {
                         <div key={r.room_number} className="p-4 border border-slate-200 dark:border-slate-700 rounded-2xl flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
                           <div>
                             <p className="font-bold text-lg">Sala {r.room_number} - {r.title}</p>
-                            <p className="text-xs text-slate-500">Tutor: {r.tutor} | Participantes: {JSON.parse(r.participants || '[]').length}</p>
+                            <p className="text-xs text-slate-500">Tutor: {r.tutor} | Participantes: {(r.participants || []).length}</p>
                           </div>
                           <button onClick={() => socket?.emit("room:close", { roomNumber: r.room_number })} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-colors">Forçar Fim</button>
                         </div>
@@ -253,7 +253,7 @@ export default function App() {
                       <div className="mb-6">
                         <div className="flex justify-between items-start mb-2">
                           <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-full uppercase">Sala {r.room_number}</span>
-                          <span className="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded-md"><Users size={12}/> {JSON.parse(r.participants || '[]').length}</span>
+                          <span className="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded-md"><Users size={12}/> {(r.participants || []).length}</span>
                         </div>
                         <h3 className="text-2xl font-black text-slate-800 dark:text-white leading-tight mb-1">{r.title}</h3>
                         <p className="text-slate-500 dark:text-slate-400 font-medium text-sm flex items-center gap-1"><Stethoscope size={14} /> Tutor: {r.tutor}</p>
