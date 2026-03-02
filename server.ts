@@ -85,15 +85,17 @@ async function startServer() {
         return;
       }
 
+      // Exige o nome de todos (Coordenador ou Aluno)
+      if (!name || name.trim() === "") {
+        socket.emit("error", { message: "Digite seu nome para entrar." });
+        return;
+      }
+
       let isCreator = false;
       if (password === room.admin_password) {
-        isCreator = true; // Logou como Tutor/Admin
+        isCreator = true; // Logou como Coordenador/Admin
       } else if (password === room.participant_password) {
         isCreator = false; // Logou como Aluno
-        if (!name || name.trim() === "") {
-          socket.emit("error", { message: "Digite seu nome para entrar." });
-          return;
-        }
       } else {
         socket.emit("error", { message: "Senha incorreta." });
         return;
@@ -101,23 +103,23 @@ async function startServer() {
 
       let participants = JSON.parse(room.participants);
       
-      // Adiciona o nome à lista se for aluno e ainda não estiver na lista
-      if (!isCreator && name && !participants.includes(name.trim())) {
+      // Adiciona o nome à lista de participantes para TODOS (Alunos e Coordenador)
+      if (name && name.trim() !== "" && !participants.includes(name.trim())) {
         participants.push(name.trim());
         db.prepare("UPDATE rooms SET participants = ? WHERE room_number = ?").run(JSON.stringify(participants), roomNumber);
       }
 
       socket.join(`room-${roomNumber}`);
       
-      // Retorna os dados para quem entrou
+      // Retorna os dados para quem entrou (usando o nome real digitado)
       socket.emit("room:joined", { 
         roomNumber, 
         isCreator,
-        name: isCreator ? "Admin" : name.trim(),
+        name: name.trim(),
         room: { ...room, participants, speaking_order: JSON.parse(room.speaking_order), is_active: true }
       });
 
-      // Atualiza a tela de todos na sala com o novo participante
+      // Atualiza a tela de todos na sala com o novo participante (inclusive quando o coordenador entra)
       io.to(`room-${roomNumber}`).emit("room:sync", { participants });
       io.emit("rooms:updated");
     });
@@ -133,7 +135,7 @@ async function startServer() {
       io.to(`room-${roomNumber}`).emit("room:sync", { timer_running: !!updated.timer_running, remaining_time: updated.remaining_time });
     });
 
-    // PEDIR A VEZ DE FALA
+    // PEDIR A VEZ DE FALA (Funciona para Alunos e Coordenador)
     socket.on("room:speak", (data) => {
       const { roomNumber, participant } = data;
       const room = db.prepare("SELECT * FROM rooms WHERE room_number = ?").get(roomNumber);

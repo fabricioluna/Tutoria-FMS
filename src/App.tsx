@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, Plus, LogIn, Play, Pause, RotateCcw, X, 
   Mic2, LogOut, Moon, Sun, Check, ChevronRight, Stethoscope, ShieldAlert, Hand
@@ -19,7 +19,7 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
 
   const [formData, setFormData] = useState({ 
-    roomNumber: 1, title: "", tutor: "", time: 120, adminPassword: "", participantPassword: "", joinName: "", joinPassword: "", globalAdminPassword: ""
+    roomNumber: 1, title: "", tutor: "", coordinatorName: "", time: 120, adminPassword: "", participantPassword: "", joinName: "", joinPassword: "", globalAdminPassword: ""
   });
 
   useEffect(() => {
@@ -38,8 +38,8 @@ export default function App() {
     
     newSocket.on("room:created", (data) => { 
       setIsCreator(true); 
-      setFormData(prev => ({ ...prev, joinPassword: formData.adminPassword })); 
-      socket?.emit("room:join", { roomNumber: data.roomNumber, name: "Admin", password: formData.adminPassword });
+      setFormData(prev => ({ ...prev, joinPassword: formData.adminPassword, joinName: formData.coordinatorName })); 
+      socket?.emit("room:join", { roomNumber: data.roomNumber, name: formData.coordinatorName, password: formData.adminPassword });
     });
 
     newSocket.on("room:joined", (data) => { 
@@ -63,10 +63,10 @@ export default function App() {
 
     updateRooms();
     return () => { newSocket.disconnect(); };
-  }, [formData.adminPassword, view]);
+  }, [formData.adminPassword, formData.coordinatorName, view]);
 
   const handleCreate = () => {
-    if(!formData.title || !formData.tutor || formData.adminPassword.length !== 4 || formData.participantPassword.length !== 4) {
+    if(!formData.title || !formData.tutor || !formData.coordinatorName || formData.adminPassword.length !== 4 || formData.participantPassword.length !== 4) {
       setError("Preencha todos os campos. As senhas devem ter 4 dígitos.");
       return;
     }
@@ -74,8 +74,8 @@ export default function App() {
   };
 
   const handleJoin = (selectedRoom: number) => {
-    if(!formData.joinPassword) {
-      setError("Digite a senha para entrar.");
+    if(!formData.joinPassword || !formData.joinName) {
+      setError("Digite seu nome e a senha para entrar.");
       return;
     }
     socket?.emit("room:join", { roomNumber: selectedRoom, name: formData.joinName, password: formData.joinPassword });
@@ -143,7 +143,7 @@ export default function App() {
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                     <div className="h-20 w-20 mx-auto bg-emerald-100 dark:bg-emerald-900/40 rounded-3xl flex items-center justify-center mb-6 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300"><Plus size={40} /></div>
                     <h3 className="text-2xl font-bold mb-2">Criar Nova Sessão</h3>
-                    <p className="text-slate-500 dark:text-slate-400">Coordenador/Tutor: Configure as senhas e abra a sala.</p>
+                    <p className="text-slate-500 dark:text-slate-400">Coordenador: Configure as senhas e abra a sala.</p>
                   </motion.button>
                   <motion.button whileHover={{ y: -5, scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setView("join")} className="group relative p-10 bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-[2rem] shadow-xl border border-white/50 dark:border-slate-700 hover:border-blue-500/50 transition-all overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -206,6 +206,11 @@ export default function App() {
                       {rooms.map(r => <option key={r.room_number} value={r.room_number} disabled={r.is_active}>Sala {r.room_number} {r.is_active ? "(Ocupada)" : ""}</option>)}
                     </select>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-500 mb-2">Seu Nome (Coordenador Criador)</label>
+                    <input placeholder="Ex: Fabrício Luna" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none" onChange={e => setFormData({...formData, coordinatorName: e.target.value})} />
+                  </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
@@ -213,7 +218,7 @@ export default function App() {
                       <input placeholder="Ex: SP 02" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none" onChange={e => setFormData({...formData, title: e.target.value})} />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-slate-500 mb-2">Nome do Tutor</label>
+                      <label className="block text-sm font-bold text-slate-500 mb-2">Tutor da Sessão (Informativo)</label>
                       <input placeholder="Dr. / Dra." className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none" onChange={e => setFormData({...formData, tutor: e.target.value})} />
                     </div>
                   </div>
@@ -260,12 +265,12 @@ export default function App() {
                       </div>
                       
                       <div className="space-y-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-                        <input placeholder="Seu Nome (Aluno)" className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none text-sm" onChange={e => setFormData({...formData, joinName: e.target.value})} />
+                        <input placeholder="Seu Nome (Aluno ou Coordenador)" className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none text-sm" onChange={e => setFormData({...formData, joinName: e.target.value})} />
                         <div className="flex gap-2">
                           <input placeholder="Senha" type="password" maxLength={4} className="w-1/2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-widest text-sm font-bold" onChange={e => setFormData({...formData, joinPassword: e.target.value})} />
                           <button onClick={() => handleJoin(r.room_number)} className="w-1/2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl text-sm transition-colors shadow-md">Entrar</button>
                         </div>
-                        <p className="text-[10px] text-center text-slate-400 mt-2">Dica: O Coordenador pode deixar o nome em branco e usar a Senha Admin.</p>
+                        <p className="text-[10px] text-center text-slate-400 mt-2">Dica: Coordenadores devem digitar seu nome e usar a Senha Admin para comandar a sala e participar.</p>
                       </div>
                     </div>
                   ))}
@@ -316,20 +321,22 @@ export default function App() {
                       <div className={`text-7xl md:text-[8rem] font-black tabular-nums tracking-tighter transition-colors duration-300 ${currentRoom.remaining_time < 60 ? 'text-red-500 animate-pulse' : 'text-slate-800 dark:text-white'}`}>
                         {formatTime(currentRoom.remaining_time)}
                       </div>
+
+                      {/* Botão de Pedir a Vez (PARA TODOS, inclusive Coordenador) */}
+                      <div className="mt-8 w-full max-w-sm">
+                        <button onClick={() => socket?.emit("room:speak", { roomNumber: currentRoom.room_number, participant: myName })} className={`w-full flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all shadow-xl hover:-translate-y-1 active:scale-95 ${currentRoom.speaking_order.includes(myName) ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-600 text-white shadow-blue-600/30'}`}>
+                          <Hand fill="currentColor" size={24} className={currentRoom.speaking_order.includes(myName) ? "" : "animate-bounce"} />
+                          {currentRoom.speaking_order.includes(myName) ? "ABAIXAR A MÃO (SAIR DA FILA)" : "PEDIR A VEZ DE FALA"}
+                        </button>
+                      </div>
                       
-                      {isCreator ? (
-                        <div className="flex gap-4 mt-8">
+                      {/* Controles do Cronômetro (APENAS COORDENADOR) */}
+                      {isCreator && (
+                        <div className="flex gap-4 mt-8 pt-8 border-t border-slate-200 dark:border-slate-700 w-full justify-center">
                           <button onClick={() => socket?.emit("room:timer_control", { roomNumber: currentRoom.room_number, action: currentRoom.timer_running ? "pause" : "start" })} className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95 ${currentRoom.timer_running ? 'bg-amber-500 shadow-amber-500/30' : 'bg-emerald-500 shadow-emerald-500/30'}`}>
                             {currentRoom.timer_running ? <Pause fill="currentColor" /> : <Play fill="currentColor" />} {currentRoom.timer_running ? 'PAUSAR' : 'INICIAR'}
                           </button>
                           <button onClick={() => socket?.emit("room:timer_control", { roomNumber: currentRoom.room_number, action: "reset" })} className="p-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors" title="Zerar Tempo"><RotateCcw /></button>
-                        </div>
-                      ) : (
-                        <div className="mt-8 w-full max-w-sm">
-                          <button onClick={() => socket?.emit("room:speak", { roomNumber: currentRoom.room_number, participant: myName })} className={`w-full flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all shadow-xl hover:-translate-y-1 active:scale-95 ${currentRoom.speaking_order.includes(myName) ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-600 text-white shadow-blue-600/30'}`}>
-                            <Hand fill="currentColor" size={24} className={currentRoom.speaking_order.includes(myName) ? "" : "animate-bounce"} />
-                            {currentRoom.speaking_order.includes(myName) ? "ABAIXAR A MÃO (SAIR DA FILA)" : "PEDIR A VEZ DE FALA"}
-                          </button>
                         </div>
                       )}
                     </div>
