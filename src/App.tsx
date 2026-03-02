@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, Plus, LogIn, Play, Pause, RotateCcw, X, 
   Mic2, LogOut, Moon, Sun, Check, ChevronRight, Stethoscope, ShieldAlert, Hand
