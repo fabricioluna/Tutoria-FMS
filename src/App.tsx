@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -22,12 +22,20 @@ export default function App() {
     roomNumber: 1, title: "", tutor: "", coordinatorName: "", time: 120, adminPassword: "", participantPassword: "", joinName: "", joinPassword: "", globalAdminPassword: ""
   });
 
+  // useRef é usado para guardar os dados do formulário sem causar re-renderização do socket
+  const formDataRef = useRef(formData);
+
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
   useEffect(() => {
     const root = window.document.documentElement;
     darkMode ? root.classList.add("dark") : root.classList.remove("dark");
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
+  // EFEITO DO SOCKET: Agora com array de dependências VAZIO [] para nunca desconectar sozinho
   useEffect(() => {
     const newSocket = io();
     setSocket(newSocket);
@@ -38,8 +46,9 @@ export default function App() {
     
     newSocket.on("room:created", (data) => { 
       setIsCreator(true); 
-      setFormData(prev => ({ ...prev, joinPassword: formData.adminPassword, joinName: formData.coordinatorName })); 
-      socket?.emit("room:join", { roomNumber: data.roomNumber, name: formData.coordinatorName, password: formData.adminPassword });
+      const currentForm = formDataRef.current;
+      setFormData(prev => ({ ...prev, joinPassword: currentForm.adminPassword, joinName: currentForm.coordinatorName })); 
+      newSocket.emit("room:join", { roomNumber: data.roomNumber, name: currentForm.coordinatorName, password: currentForm.adminPassword });
     });
 
     newSocket.on("room:joined", (data) => { 
@@ -52,18 +61,23 @@ export default function App() {
     newSocket.on("room:sync", (data) => setCurrentRoom((prev: any) => ({ ...prev, ...data })));
     
     newSocket.on("room:closed", () => { 
-      if(view === "room") {
-        setView("home"); 
-        setCurrentRoom(null); 
-        setError("A tutoria foi encerrada pelo Tutor ou Administrador."); 
-      }
+      // Verifica a view de forma segura sem colocar 'view' nas dependências do useEffect
+      setView(prevView => {
+        if (prevView === "room") {
+          setCurrentRoom(null); 
+          setError("A tutoria foi encerrada pelo Tutor ou Administrador."); 
+          return "home";
+        }
+        return prevView;
+      });
     });
 
     newSocket.on("error", (d) => setError(d.message));
 
     updateRooms();
+    
     return () => { newSocket.disconnect(); };
-  }, [formData.adminPassword, formData.coordinatorName, view]);
+  }, []); // <--- O SEGREDO ESTÁ AQUI: array vazio evita o fechamento aleatório do WebSocket
 
   const handleCreate = () => {
     if(!formData.title || !formData.tutor || !formData.coordinatorName || formData.adminPassword.length !== 4 || formData.participantPassword.length !== 4) {
@@ -322,11 +336,11 @@ export default function App() {
                         {formatTime(currentRoom.remaining_time)}
                       </div>
 
-                      {/* Botão de Pedir a Vez (PARA TODOS, inclusive Coordenador) */}
+                      {/* Botão de Pedir a Vez (PARA TODOS) */}
                       <div className="mt-8 w-full max-w-sm">
                         <button onClick={() => socket?.emit("room:speak", { roomNumber: currentRoom.room_number, participant: myName })} className={`w-full flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all shadow-xl hover:-translate-y-1 active:scale-95 ${currentRoom.speaking_order.includes(myName) ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-600 text-white shadow-blue-600/30'}`}>
                           <Hand fill="currentColor" size={24} className={currentRoom.speaking_order.includes(myName) ? "" : "animate-bounce"} />
-                          {currentRoom.speaking_order.includes(myName) ? "ABAIXAR A MÃO (SAIR DA FILA)" : "PEDIR A VEZ DE FALA"}
+                          {currentRoom.speaking_order.includes(myName) ? "ABAIXAR A MÃO" : "PEDIR A VEZ"}
                         </button>
                       </div>
                       
