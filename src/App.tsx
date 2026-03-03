@@ -3,7 +3,8 @@ import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, Plus, LogIn, Play, Pause, RotateCcw, X, 
-  Mic2, LogOut, Moon, Sun, Check, ChevronRight, Stethoscope, ShieldAlert, Hand
+  Mic2, LogOut, Moon, Sun, Check, ChevronRight, Stethoscope, 
+  ShieldAlert, Hand, Edit2, ArrowUp, ArrowDown
 } from "lucide-react";
 
 const LOGO_URL = "/logo.png";
@@ -22,7 +23,9 @@ export default function App() {
     roomNumber: 1, title: "", tutor: "", coordinatorName: "", time: 120, adminPassword: "", participantPassword: "", joinName: "", joinPassword: "", globalAdminPassword: ""
   });
 
-  // useRef é usado para guardar os dados do formulário sem causar re-renderização do socket
+  const [isEditingTime, setIsEditingTime] = useState(false);
+  const [newTimeInput, setNewTimeInput] = useState("");
+
   const formDataRef = useRef(formData);
 
   useEffect(() => {
@@ -35,7 +38,6 @@ export default function App() {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
-  // EFEITO DO SOCKET: Agora com array de dependências VAZIO [] para nunca desconectar sozinho
   useEffect(() => {
     const newSocket = io();
     setSocket(newSocket);
@@ -61,7 +63,6 @@ export default function App() {
     newSocket.on("room:sync", (data) => setCurrentRoom((prev: any) => ({ ...prev, ...data })));
     
     newSocket.on("room:closed", () => { 
-      // Verifica a view de forma segura sem colocar 'view' nas dependências do useEffect
       setView(prevView => {
         if (prevView === "room") {
           setCurrentRoom(null); 
@@ -77,11 +78,11 @@ export default function App() {
     updateRooms();
     
     return () => { newSocket.disconnect(); };
-  }, []); // <--- O SEGREDO ESTÁ AQUI: array vazio evita o fechamento aleatório do WebSocket
+  }, []);
 
   const handleCreate = () => {
-    if(!formData.title || !formData.tutor || !formData.coordinatorName || formData.adminPassword.length !== 4 || formData.participantPassword.length !== 4) {
-      setError("Preencha todos os campos. As senhas devem ter 4 dígitos.");
+    if(!formData.title || !formData.tutor || !formData.coordinatorName || formData.adminPassword.length !== 4 || formData.participantPassword.length !== 4 || formData.time <= 0) {
+      setError("Preencha todos os campos corretamente. As senhas devem ter 4 dígitos.");
       return;
     }
     socket?.emit("room:create", { ...formData, time: formData.time * 60 });
@@ -102,7 +103,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-500 overflow-x-hidden relative">
       
-      {/* Background Decorativo */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 dark:bg-blue-600/10 blur-[100px] rounded-full" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/10 dark:bg-emerald-600/10 blur-[100px] rounded-full" />
@@ -110,7 +110,6 @@ export default function App() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 min-h-screen flex flex-col">
         
-        {/* Header */}
         <header className="py-6 flex justify-between items-center">
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-4 cursor-pointer" onClick={() => setView("home")}>
             <div className="w-14 h-14 md:w-16 md:h-16 bg-white rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-center shrink-0 p-1">
@@ -145,7 +144,6 @@ export default function App() {
         <main className="flex-1 py-8 flex flex-col">
           <AnimatePresence mode="wait">
             
-            {/* View: HOME */}
             {view === "home" && (
               <motion.div key="home" {...pageTransition} className="flex-1 flex flex-col items-center justify-center max-w-4xl mx-auto w-full">
                 <div className="text-center mb-12">
@@ -169,7 +167,6 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* View: GLOBAL ADMIN */}
             {view === "globalAdmin" && (
               <motion.div key="globalAdmin" {...pageTransition} className="max-w-xl mx-auto w-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-red-200 dark:border-red-900/30">
                 <div className="flex items-center gap-4 mb-8">
@@ -205,7 +202,6 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* View: CREATE */}
             {view === "create" && (
               <motion.div key="create" {...pageTransition} className="max-w-xl mx-auto w-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white/50 dark:border-slate-700">
                 <div className="flex items-center gap-4 mb-8">
@@ -214,11 +210,17 @@ export default function App() {
                 </div>
                 
                 <div className="space-y-5">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-500 mb-2">Sala Física</label>
-                    <select className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none" onChange={e => setFormData({...formData, roomNumber: Number(e.target.value)})}>
-                      {rooms.map(r => <option key={r.room_number} value={r.room_number} disabled={r.is_active}>Sala {r.room_number} {r.is_active ? "(Ocupada)" : ""}</option>)}
-                    </select>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-bold text-slate-500 mb-2">Sala Física</label>
+                      <select className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none" onChange={e => setFormData({...formData, roomNumber: Number(e.target.value)})}>
+                        {rooms.map(r => <option key={r.room_number} value={r.room_number} disabled={r.is_active}>Sala {r.room_number} {r.is_active ? "(Ocupada)" : ""}</option>)}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-bold text-slate-500 mb-2">Duração Inicial (Minutos)</label>
+                      <input type="number" placeholder="Ex: 120" value={formData.time} className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none" onChange={e => setFormData({...formData, time: Number(e.target.value)})} />
+                    </div>
                   </div>
 
                   <div>
@@ -239,12 +241,12 @@ export default function App() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-4 bg-slate-100 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700">
                     <div>
-                      <label className="block text-xs font-bold text-red-500 mb-2 uppercase tracking-wide">Senha do Coordenador (Admin)</label>
+                      <label className="block text-xs font-bold text-red-500 mb-2 uppercase tracking-wide">Senha do Coordenador</label>
                       <input placeholder="Ex: 1234" maxLength={4} type="password" pattern="\d*" className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-red-500 text-center tracking-widest font-bold" onChange={e => setFormData({...formData, adminPassword: e.target.value})} />
                       <p className="text-[10px] text-slate-400 mt-1">Use para comandar a sala.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-blue-500 mb-2 uppercase tracking-wide">Senha da Sala (Alunos)</label>
+                      <label className="block text-xs font-bold text-blue-500 mb-2 uppercase tracking-wide">Senha dos Alunos</label>
                       <input placeholder="Ex: 0000" maxLength={4} type="password" pattern="\d*" className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 text-center tracking-widest font-bold" onChange={e => setFormData({...formData, participantPassword: e.target.value})} />
                       <p className="text-[10px] text-slate-400 mt-1">Repasse para a turma entrar.</p>
                     </div>
@@ -258,7 +260,6 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* View: JOIN */}
             {view === "join" && (
               <motion.div key="join" {...pageTransition} className="max-w-4xl mx-auto w-full">
                 <div className="flex items-center gap-4 mb-8 justify-center">
@@ -301,11 +302,9 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* View: ROOM */}
             {view === "room" && currentRoom && (
               <motion.div key="room" {...pageTransition} className="flex flex-col gap-6 w-full">
                 
-                {/* Cabeçalho da Sala */}
                 <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-lg border border-white/50 dark:border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -324,7 +323,6 @@ export default function App() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   
-                  {/* Coluna Esquerda: Cronômetro e Botões */}
                   <div className="lg:col-span-2 flex flex-col gap-6">
                     
                     <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl p-8 md:p-12 rounded-[2rem] shadow-xl border border-white/50 dark:border-slate-700 flex flex-col items-center justify-center relative overflow-hidden">
@@ -332,30 +330,57 @@ export default function App() {
                         <motion.div className="h-full bg-blue-500" initial={{ width: '100%' }} animate={{ width: `${(currentRoom.remaining_time / currentRoom.initial_time) * 100}%` }} transition={{ duration: 1 }} />
                       </div>
 
-                      <div className={`text-7xl md:text-[8rem] font-black tabular-nums tracking-tighter transition-colors duration-300 ${currentRoom.remaining_time < 60 ? 'text-red-500 animate-pulse' : 'text-slate-800 dark:text-white'}`}>
-                        {formatTime(currentRoom.remaining_time)}
-                      </div>
+                      {isEditingTime ? (
+                        <div className="flex flex-col items-center gap-4 z-10 my-8">
+                          <label className="text-sm font-bold text-slate-500 uppercase tracking-widest">Novo tempo em minutos</label>
+                          <input 
+                            type="number" 
+                            className="text-5xl md:text-7xl font-black text-center p-4 rounded-3xl border-4 border-blue-500 outline-none w-64 text-slate-800 dark:bg-slate-900 dark:text-white shadow-xl"
+                            value={newTimeInput}
+                            onChange={(e) => setNewTimeInput(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="flex gap-3 mt-4">
+                            <button onClick={() => {
+                              const mins = Number(newTimeInput);
+                              if (!isNaN(mins) && mins >= 0) {
+                                socket?.emit("room:edit_time", { roomNumber: currentRoom.room_number, newTime: Math.floor(mins * 60) });
+                              }
+                              setIsEditingTime(false);
+                            }} className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-emerald-600 transition-colors"><Check size={20}/> Salvar</button>
+                            <button onClick={() => setIsEditingTime(false)} className="px-6 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-300 transition-colors"><X size={20}/> Cancelar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`text-7xl md:text-[8rem] font-black tabular-nums tracking-tighter transition-colors duration-300 ${currentRoom.remaining_time < 60 ? 'text-red-500 animate-pulse' : 'text-slate-800 dark:text-white'}`}>
+                          {formatTime(currentRoom.remaining_time)}
+                        </div>
+                      )}
 
-                      {/* Botão de Pedir a Vez (PARA TODOS) */}
-                      <div className="mt-8 w-full max-w-sm">
-                        <button onClick={() => socket?.emit("room:speak", { roomNumber: currentRoom.room_number, participant: myName })} className={`w-full flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all shadow-xl hover:-translate-y-1 active:scale-95 ${currentRoom.speaking_order.includes(myName) ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-600 text-white shadow-blue-600/30'}`}>
-                          <Hand fill="currentColor" size={24} className={currentRoom.speaking_order.includes(myName) ? "" : "animate-bounce"} />
-                          {currentRoom.speaking_order.includes(myName) ? "ABAIXAR A MÃO" : "PEDIR A VEZ"}
-                        </button>
-                      </div>
+                      {!isEditingTime && (
+                        <div className="mt-8 w-full max-w-sm z-10">
+                          <button onClick={() => socket?.emit("room:speak", { roomNumber: currentRoom.room_number, participant: myName })} className={`w-full flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all shadow-xl hover:-translate-y-1 active:scale-95 ${currentRoom.speaking_order.includes(myName) ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-600 text-white shadow-blue-600/30'}`}>
+                            <Hand fill="currentColor" size={24} className={currentRoom.speaking_order.includes(myName) ? "" : "animate-bounce"} />
+                            {currentRoom.speaking_order.includes(myName) ? "ABAIXAR A MÃO" : "PEDIR A VEZ"}
+                          </button>
+                        </div>
+                      )}
                       
-                      {/* Controles do Cronômetro (APENAS COORDENADOR) */}
-                      {isCreator && (
-                        <div className="flex gap-4 mt-8 pt-8 border-t border-slate-200 dark:border-slate-700 w-full justify-center">
+                      {isCreator && !isEditingTime && (
+                        <div className="flex gap-4 mt-8 pt-8 border-t border-slate-200 dark:border-slate-700 w-full justify-center z-10">
                           <button onClick={() => socket?.emit("room:timer_control", { roomNumber: currentRoom.room_number, action: currentRoom.timer_running ? "pause" : "start" })} className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95 ${currentRoom.timer_running ? 'bg-amber-500 shadow-amber-500/30' : 'bg-emerald-500 shadow-emerald-500/30'}`}>
                             {currentRoom.timer_running ? <Pause fill="currentColor" /> : <Play fill="currentColor" />} {currentRoom.timer_running ? 'PAUSAR' : 'INICIAR'}
                           </button>
-                          <button onClick={() => socket?.emit("room:timer_control", { roomNumber: currentRoom.room_number, action: "reset" })} className="p-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors" title="Zerar Tempo"><RotateCcw /></button>
+                          
+                          <button onClick={() => { setIsEditingTime(true); setNewTimeInput(Math.floor(currentRoom.remaining_time / 60).toString()); }} className="p-4 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-2xl hover:bg-blue-200 dark:hover:bg-blue-900/80 transition-colors" title="Editar Tempo Manualmente">
+                            <Edit2 />
+                          </button>
+
+                          <button onClick={() => socket?.emit("room:timer_control", { roomNumber: currentRoom.room_number, action: "reset" })} className="p-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors" title="Zerar Tempo para o Inicial"><RotateCcw /></button>
                         </div>
                       )}
                     </div>
 
-                    {/* Fila Principal */}
                     <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-lg border border-white/50 dark:border-slate-700 flex-1">
                       <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl font-bold flex items-center gap-3"><div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-400"><Mic2 size={20} /></div> Ordem de Fala</h3>
@@ -370,9 +395,19 @@ export default function App() {
                         <AnimatePresence>
                           {currentRoom.speaking_order.map((name: string, i: number) => (
                             <motion.div key={name} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.9 }} className={`p-4 rounded-2xl flex items-center gap-4 transition-colors ${i === 0 ? 'bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-900/20 dark:to-slate-800 border-2 border-emerald-400 shadow-md' : 'bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800'}`}>
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shadow-sm ${i === 0 ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300'}`}>{i + 1}</div>
-                              <span className={`text-lg font-bold ${i === 0 ? 'text-emerald-800 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {name === myName && "(Você)"}</span>
-                              {i === 0 && <span className="ml-auto flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400 font-black px-3 py-1.5 rounded-full uppercase tracking-wider animate-pulse"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> Falando</span>}
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shadow-sm shrink-0 ${i === 0 ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300'}`}>{i + 1}</div>
+                              <span className={`text-lg font-bold truncate ${i === 0 ? 'text-emerald-800 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {name === myName && "(Você)"}</span>
+                              
+                              <div className="ml-auto flex items-center gap-2 shrink-0">
+                                {i === 0 && <span className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400 font-black px-3 py-1.5 rounded-full uppercase tracking-wider animate-pulse"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> Falando</span>}
+                                
+                                {isCreator && (
+                                  <div className="flex flex-col gap-1 pl-2 border-l border-slate-200 dark:border-slate-700">
+                                    <button disabled={i === 0} onClick={() => socket?.emit("room:move_speaker", { roomNumber: currentRoom.room_number, participant: name, direction: "up" })} className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-slate-800 rounded transition-colors disabled:opacity-20 disabled:hover:bg-transparent"><ArrowUp size={16}/></button>
+                                    <button disabled={i === currentRoom.speaking_order.length - 1} onClick={() => socket?.emit("room:move_speaker", { roomNumber: currentRoom.room_number, participant: name, direction: "down" })} className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-slate-800 rounded transition-colors disabled:opacity-20 disabled:hover:bg-transparent"><ArrowDown size={16}/></button>
+                                  </div>
+                                )}
+                              </div>
                             </motion.div>
                           ))}
                         </AnimatePresence>
@@ -386,7 +421,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Coluna Direita: Participantes Presentes */}
                   <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-lg border border-white/50 dark:border-slate-700 max-h-[800px] flex flex-col">
                     <h3 className="text-xl font-bold mb-6 flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-700">
                       <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300"><Users size={20} /></div>

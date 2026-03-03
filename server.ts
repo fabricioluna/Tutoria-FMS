@@ -30,7 +30,6 @@ db.exec(`
   )
 `);
 
-// Atualização automática do banco para suportar as duas senhas
 try { db.prepare("ALTER TABLE rooms ADD COLUMN admin_password TEXT").run(); } catch (e) {}
 try { db.prepare("ALTER TABLE rooms ADD COLUMN participant_password TEXT").run(); } catch (e) {}
 
@@ -61,21 +60,25 @@ async function startServer() {
 
   io.on("connection", (socket) => {
     
-    // CRIAR SALA
+    // CRIAR SALA (Agora já salva o coordenador como participante imediato)
     socket.on("room:create", (data) => {
-      const { roomNumber, title, tutor, time, adminPassword, participantPassword } = data;
+      const { roomNumber, title, tutor, time, adminPassword, participantPassword, coordinatorName } = data;
+      
+      const initialParticipants = coordinatorName ? JSON.stringify([coordinatorName.trim()]) : '[]';
+
       db.prepare(`
         UPDATE rooms SET 
           title = ?, tutor = ?, initial_time = ?, remaining_time = ?, 
-          participants = '[]', admin_password = ?, participant_password = ?, is_active = 1, 
+          participants = ?, admin_password = ?, participant_password = ?, is_active = 1, 
           speaking_order = '[]', timer_running = 0
         WHERE room_number = ?
-      `).run(title, tutor, time, time, adminPassword, participantPassword, roomNumber);
+      `).run(title, tutor, time, time, initialParticipants, adminPassword, participantPassword, roomNumber);
+      
       io.emit("rooms:updated");
       socket.emit("room:created", { roomNumber });
     });
 
-    // ENTRAR NA SALA (Admin ou Participante)
+    // ENTRAR NA SALA
     socket.on("room:join", (data) => {
       const { roomNumber, name, password } = data;
       const room = db.prepare("SELECT * FROM rooms WHERE room_number = ?").get(roomNumber);
@@ -85,7 +88,6 @@ async function startServer() {
         return;
       }
 
-      // Exige o nome de todos (Coordenador ou Aluno)
       if (!name || name.trim() === "") {
         socket.emit("error", { message: "Digite seu nome para entrar." });
         return;
@@ -93,9 +95,9 @@ async function startServer() {
 
       let isCreator = false;
       if (password === room.admin_password) {
-        isCreator = true; // Logou como Coordenador/Admin
+        isCreator = true; 
       } else if (password === room.participant_password) {
-        isCreator = false; // Logou como Aluno
+        isCreator = false; 
       } else {
         socket.emit("error", { message: "Senha incorreta." });
         return;
@@ -103,7 +105,6 @@ async function startServer() {
 
       let participants = JSON.parse(room.participants);
       
-      // Adiciona o nome à lista de participantes para TODOS (Alunos e Coordenador)
       if (name && name.trim() !== "" && !participants.includes(name.trim())) {
         participants.push(name.trim());
         db.prepare("UPDATE rooms SET participants = ? WHERE room_number = ?").run(JSON.stringify(participants), roomNumber);
@@ -111,7 +112,6 @@ async function startServer() {
 
       socket.join(`room-${roomNumber}`);
       
-      // Retorna os dados para quem entrou (usando o nome real digitado)
       socket.emit("room:joined", { 
         roomNumber, 
         isCreator,
@@ -119,12 +119,11 @@ async function startServer() {
         room: { ...room, participants, speaking_order: JSON.parse(room.speaking_order), is_active: true }
       });
 
-      // Atualiza a tela de todos na sala com o novo participante (inclusive quando o coordenador entra)
       io.to(`room-${roomNumber}`).emit("room:sync", { participants });
       io.emit("rooms:updated");
     });
 
-    // CONTROLE DE TEMPO
+    // CONTROLE DE TEMPO (PLAY/PAUSE/RESET)
     socket.on("room:timer_control", (data) => {
       const { roomNumber, action } = data;
       if (action === "start") db.prepare("UPDATE rooms SET timer_running = 1, last_tick = ? WHERE room_number = ?").run(Date.now(), roomNumber);
@@ -135,7 +134,24 @@ async function startServer() {
       io.to(`room-${roomNumber}`).emit("room:sync", { timer_running: !!updated.timer_running, remaining_time: updated.remaining_time });
     });
 
-    // PEDIR A VEZ DE FALA (Funciona para Alunos e Coordenador)
+    // EDITAR TEMPO NA SALA ABERTA (CORRIGIDO)
+    socket.on("room:edit_time", (data) => {
+      const { roomNumber, newTime } = data; // newTime chega em segundos (minutos * 60)
+      
+      // Atualiza o tempo e força a pausa para evitar bugs visuais
+      db.prepare("UPDATE rooms SET remaining_time = ?, initial_time = ?, timer_running = 0 WHERE room_number = ?").run(newTime, newTime, roomNumber);
+      
+      const updated = db.prepare("SELECT * FROM rooms WHERE room_number = ?").get(roomNumber);
+      
+      io.to(`room-${roomNumber}`).emit("room:sync", { 
+        remaining_time: updated.remaining_time, 
+        initial_time: updated.initial_time, 
+        timer_running: false 
+      });
+      io.emit("rooms:updated");
+    });
+
+    // PEDIR A VEZ DE FALA
     socket.on("room:speak", (data) => {
       const { roomNumber, participant } = data;
       const room = db.prepare("SELECT * FROM rooms WHERE room_number = ?").get(roomNumber);
@@ -143,29 +159,49 @@ async function startServer() {
       
       let order = JSON.parse(room.speaking_order);
       if (!order.includes(participant)) {
-        order.push(participant); // Entra na fila
+        order.push(participant);
       } else {
-        order = order.filter((p: string) => p !== participant); // Sai da fila
+        order = order.filter((p: string) => p !== participant);
       }
       
       db.prepare("UPDATE rooms SET speaking_order = ? WHERE room_number = ?").run(JSON.stringify(order), roomNumber);
       io.to(`room-${roomNumber}`).emit("room:sync", { speaking_order: order });
     });
 
-    // ADMIN PASSA A VEZ
+    // REORDENAR FILA (COORDENADOR)
+    socket.on("room:move_speaker", (data) => {
+      const { roomNumber, participant, direction } = data;
+      const room = db.prepare("SELECT * FROM rooms WHERE room_number = ?").get(roomNumber);
+      if (!room) return;
+      
+      let order = JSON.parse(room.speaking_order);
+      const index = order.indexOf(participant);
+      if (index === -1) return;
+      
+      if (direction === "up" && index > 0) {
+        [order[index - 1], order[index]] = [order[index], order[index - 1]];
+      } else if (direction === "down" && index < order.length - 1) {
+        [order[index + 1], order[index]] = [order[index], order[index + 1]];
+      }
+      
+      db.prepare("UPDATE rooms SET speaking_order = ? WHERE room_number = ?").run(JSON.stringify(order), roomNumber);
+      io.to(`room-${roomNumber}`).emit("room:sync", { speaking_order: order });
+    });
+
+    // PASSAR A VEZ (COORDENADOR)
     socket.on("room:next_speaker", (data) => {
       const { roomNumber } = data;
       const room = db.prepare("SELECT * FROM rooms WHERE room_number = ?").get(roomNumber);
       if (!room) return;
       
       let order = JSON.parse(room.speaking_order);
-      order.shift(); // Remove o primeiro
+      order.shift(); 
       
       db.prepare("UPDATE rooms SET speaking_order = ? WHERE room_number = ?").run(JSON.stringify(order), roomNumber);
       io.to(`room-${roomNumber}`).emit("room:sync", { speaking_order: order });
     });
 
-    // ENCERRAR SALA (Local ou Global)
+    // ENCERRAR SALA
     socket.on("room:close", (data) => {
       db.prepare("UPDATE rooms SET is_active = 0, participants = '[]', speaking_order = '[]', timer_running = 0 WHERE room_number = ?").run(data.roomNumber);
       io.to(`room-${data.roomNumber}`).emit("room:closed");
@@ -173,7 +209,6 @@ async function startServer() {
     });
   });
 
-  // Loop do Cronômetro
   setInterval(() => {
     const runningRooms = db.prepare("SELECT * FROM rooms WHERE timer_running = 1").all();
     const now = Date.now();
